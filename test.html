@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TX81Z core tests</title>
+<style>
+  body { font: 13px/1.5 ui-monospace, Menlo, monospace; margin: 20px; background: #111; color: #ddd; }
+  .ok { color: #4c8; } .fail { color: #f66; font-weight: bold; }
+</style>
+</head>
+<body>
+<h3>tx81z-core round-trip tests</h3>
+<div id="out"></div>
+<script src="tx81z-data.js"></script>
+<script src="tx81z-core.js"></script>
+<script>
+"use strict";
+const out = document.getElementById("out");
+let failures = 0;
+function t(name, cond, detail) {
+  const div = document.createElement("div");
+  div.className = cond ? "ok" : "fail";
+  div.textContent = (cond ? "PASS  " : "FAIL  ") + name + (cond ? "" : "  — " + (detail || ""));
+  out.appendChild(div);
+  if (!cond) failures++;
+}
+const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/* checksum: known algebra — sum of data + checksum must be 0 mod 128 (7-bit) */
+{
+  const d = new Uint8Array([1, 2, 3, 100, 127]);
+  const ck = TXC.checksum(d, 0, d.length);
+  const sum = (1 + 2 + 3 + 100 + 127 + ck) & 0x7f;
+  t("checksum makes 7-bit sum zero", sum === 0, "sum=" + sum);
+}
+
+/* voice -> VCED/ACED -> decode -> identical */
+{
+  const v = TXD.initVoice();
+  v.name = "TEST VOICE";
+  v.alg = 4; v.fb = 6; v.trps = 30; v.pbr = 12; v.mono = 1;
+  v.lfs = 77; v.lfw = 1; v.pms = 5; v.ams = 2; v.sync = 1;
+  v.mwp = 12; v.bcpb = 99; v.rev = 5; v.fcp = 42; v.fca = 7;
+  v.ops.forEach((o, i) => {
+    o.ar = 10 + i; o.d1r = 20 + i; o.d2r = 5 + i; o.rr = 3 + i; o.d1l = 8 + (i % 8);
+    o.ls = 40 + i; o.rs = i % 4; o.ebs = i; o.ame = i % 2; o.kvs = 7 - i;
+    o.out = 90 - i * 10; o.crs = 4 + i * 7; o.det = i; o.fix = i % 2;
+    o.fixrg = i; o.fin = 8 + i; o.opw = i * 2; o.shft = i % 4;
+  });
+  const vced = TXC.encodeVcedData(v);
+  const aced = TXC.encodeAcedData(v);
+  t("VCED data is 93 bytes", vced.length === 93);
+  t("ACED data is 23 bytes", aced.length === 23);
+  let back = TXC.decodeVced(vced, TXD.initVoice());
+  back = TXC.decodeAced(aced, back);
+  t("voice round-trip", eq(back, v), JSON.stringify(back) + " vs " + JSON.stringify(v));
+}
+
+/* full-dump framing */
+{
+  const v = TXD.initVoice();
+  const [aced, vced] = TXC.voiceDumps(0, v);
+  t("ACED dump is 41 bytes", aced.length === 41, aced.length);
+  t("VCED dump is 101 bytes", vced.length === 101, vced.length);
+  const ca = TXC.classify(aced), cv = TXC.classify(vced);
+  t("ACED dump classifies", ca && ca.type === "aced");
+  t("VCED dump classifies", cv && cv.type === "vced");
+  const back = TXC.decodeAced(ca.data, TXC.decodeVced(cv.data, TXD.initVoice()));
+  t("dump-framed voice round-trip", eq(back, v));
+  t("ACED checksum valid", TXC.checksum(aced, 6, aced.length - 2) === aced[aced.length - 2]);
+  t("VCED checksum valid", TXC.checksum(vced, 6, vced.length - 2) === vced[vced.length - 2]);
+}
+
+/* performance round-trip */
+{
+  const p = TXD.initPerformance();
+  p.name = "TESTPERF";
+  p.microtable = 9; p.assign = 1; p.effect = 2; p.microkey = 11;
+  p.insts.forEach((s, i) => {
+    s.maxnotes = i; s.voice = 20 * i + 3; s.ch = i * 2; s.low = 10 + i; s.high = 100 + i;
+    s.det = i; s.shift = 20 + i; s.vol = 90 - i; s.out = i % 4; s.lfo = i % 4; s.micro = i % 2;
+  });
+  const dump = TXC.perfDump(0, p);
+  t("PCED dump is 128 bytes", dump.length === 128, dump.length);
+  const c = TXC.classify(dump);
+  t("PCED dump classifies", c && c.type === "pced");
+  t("performance round-trip", eq(TXC.decodePced(c.data), p),
+    JSON.stringify(TXC.decodePced(c.data)));
+}
+
+/* recall messages */
+{
+  const [table, sw, pc] = TXC.recallMessages(0, 159);   // D32
+  t("PC-table write targets slot 127", table[4] === 127 && table[5] === 127);
+  t("PC-table value split hi/lo", table[6] === 1 && table[7] === 31);
+  t("remote switch is ACED group pp68", sw[3] === 0x13 && sw[4] === 68 && sw[5] === 0x7f);
+  t("PC 127 on channel", pc[0] === 0xc0 && pc[1] === 127);
+  const [t2] = TXC.recallMessages(0, 160);   // PF1
+  t("PF1 recall value 160", t2[6] === 1 && t2[7] === 32);
+}
+
+/* VMEM: pack a voice by hand into a 128-byte slot and decode it */
+{
+  const d = new Uint8Array(128);
+  // OP order in VMEM slots is 4,2,3,1 — put recognizable values in slot 0 (OP4)
+  d[0] = 25; d[1] = 12; d[2] = 6; d[3] = 9; d[4] = 11; d[5] = 55;
+  d[6] = (1 << 6) | (5 << 3) | 3;      // AME=1 EBS=5 KVS=3
+  d[7] = 88; d[8] = 33; d[9] = (2 << 3) | 4;  // RS=2 DET=4
+  d[40] = (1 << 6) | (3 << 3) | 5;     // sync=1 fb=3 alg=5
+  d[45] = (4 << 4) | (2 << 2) | 1;     // pms=4 ams=2 wave=1
+  d[46] = 30; d[47] = 7;
+  d[48] = 0b01011;                     // chorus=0 mono=1 sus=0 porta=1 portm=1
+  for (let i = 0; i < 10; i++) d[57 + i] = "VMEMVOICE ".charCodeAt(i);
+  d[73] = (1 << 4) | (1 << 3) | 2;     // OP4: shft=1 fix=1 fixrg=2
+  d[74] = (3 << 4) | 9;                // OP4: opw=3 fin=9
+  d[81] = 6; d[82] = 44; d[83] = 55;
+  const v = TXC.decodeVmemVoice(d);
+  const o4 = v.ops[3];
+  t("VMEM slot0 lands on OP4", o4.ar === 25 && o4.d1r === 12 && o4.d2r === 6 && o4.rr === 9 && o4.d1l === 11);
+  t("VMEM packed bits (AME/EBS/KVS)", o4.ame === 1 && o4.ebs === 5 && o4.kvs === 3);
+  t("VMEM packed bits (RS/DET)", o4.rs === 2 && o4.det === 4);
+  t("VMEM common", v.alg === 5 && v.fb === 3 && v.sync === 1 && v.pms === 4 && v.ams === 2 && v.lfw === 1);
+  t("VMEM mode bits", v.mono === 1 && v.porta === 1 && v.portm === 1 && v.sus === 0 && v.chorus === 0);
+  t("VMEM ACED bits", o4.fix === 1 && o4.fixrg === 2 && o4.shft === 1 && o4.fin === 9 && o4.opw === 3);
+  t("VMEM name", v.name === "VMEMVOICE");
+  t("VMEM extras", v.rev === 6 && v.fcp === 44 && v.fca === 55);
+}
+
+/* splitSysex */
+{
+  const a = TXC.voiceDumps(0, TXD.initVoice());
+  const joined = new Uint8Array([...a[0], 0xfe, ...a[1]]);   // active sensing in between
+  const parts = TXC.splitSysex(joined);
+  t("splitSysex finds 2 messages", parts.length === 2 && parts[0].length === 41 && parts[1].length === 101);
+}
+
+const h = document.createElement("h3");
+h.textContent = failures ? failures + " FAILURES" : "All tests passed";
+h.className = failures ? "fail" : "ok";
+out.appendChild(h);
+</script>
+</body>
+</html>

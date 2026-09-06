@@ -1,0 +1,1429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TX81Z Editor</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    /* light — "silkscreen on aluminum", sibling of the PCM 70 editor */
+    --ground: #e3e4e2;
+    --panel: #f4f4f2;
+    --panel-2: #eaeae7;
+    --well: #dcddd9;
+    --ink: #1d1f22;
+    --ink-soft: #5d6167;
+    --line: #c7c9c4;
+    --line-soft: #d7d8d4;
+    --accent: #b3550e;          /* TX81Z amber-orange */
+    --accent-soft: rgba(179, 85, 14, 0.14);
+    --carrier: #0c7d8d;         /* carrier ops get the teal */
+    --led-ok: #0c8d5f;
+    --led-bad: #c0392b;
+    --lcd-bg: #26300b;          /* backlit yellow-green LCD */
+    --lcd-dim: #37430f;
+    --lcd-ink: #d6e26b;
+    --btn-ink: #f4f4f2;
+    --shadow: 0 1px 2px rgba(20,24,28,.10), 0 4px 14px rgba(20,24,28,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0b0c0d; --panel: #16181a; --panel-2: #1b1e21; --well: #101214;
+      --ink: #d8dbdf; --ink-soft: #8b9097; --line: #2b2f34; --line-soft: #23262a;
+      --accent: #f09040; --accent-soft: rgba(240,144,64,.13); --carrier: #3fc3d6;
+      --led-ok: #3ddc9a; --led-bad: #ff6b5a;
+      --lcd-bg: #1c2405; --lcd-dim: #2b3609; --lcd-ink: #d6e26b;
+      --btn-ink: #0b0c0d;
+      --shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0b0c0d; --panel: #16181a; --panel-2: #1b1e21; --well: #101214;
+    --ink: #d8dbdf; --ink-soft: #8b9097; --line: #2b2f34; --line-soft: #23262a;
+    --accent: #f09040; --accent-soft: rgba(240,144,64,.13); --carrier: #3fc3d6;
+    --led-ok: #3ddc9a; --led-bad: #ff6b5a;
+    --lcd-bg: #1c2405; --lcd-dim: #2b3609; --lcd-ink: #d6e26b;
+    --btn-ink: #0b0c0d;
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 13px/1.45 -apple-system, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  button { font: inherit; color: inherit; }
+  .app { max-width: 1560px; margin: 0 auto; padding: 8px 14px 10px; display: flex; flex-direction: column; gap: 8px; min-height: 100%; }
+
+  /* ---------- top rack strip ---------- */
+  .rack {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    padding: 8px 14px;
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  }
+  .brand { display: flex; flex-direction: column; gap: 1px; min-width: 96px; }
+  .brand .logo { font-weight: 800; font-size: 18px; letter-spacing: .03em; }
+  .brand .logo em { font-style: normal; color: var(--accent); }
+  .brand .sub { font-size: 9px; letter-spacing: .18em; color: var(--ink-soft); text-transform: uppercase; }
+
+  .lcd {
+    background: var(--lcd-bg);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 8px 14px 7px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: var(--lcd-ink);
+    text-shadow: 0 0 6px color-mix(in srgb, var(--lcd-ink) 45%, transparent);
+    letter-spacing: .12em;
+    font-size: 15px;
+    white-space: pre;
+    min-width: 300px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .lcd .row2 { font-size: 10.5px; letter-spacing: .16em; opacity: .55; }
+  .rack .spacer { flex: 1; }
+
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field > label {
+    font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 600;
+  }
+  select, input[type="text"] {
+    background: var(--well); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 4px 7px; font: inherit; font-size: 12px; max-width: 200px;
+  }
+  select:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .led { width: 9px; height: 9px; border-radius: 50%; background: var(--led-bad); box-shadow: 0 0 5px var(--led-bad); align-self: center; }
+  .led.ok { background: var(--led-ok); box-shadow: 0 0 5px var(--led-ok); }
+  .led.blink { animation: ledblink .14s; }
+  @keyframes ledblink { 50% { filter: brightness(2.2); } }
+
+  .ghostbtn {
+    background: transparent; border: 1px solid var(--line); border-radius: 4px;
+    color: var(--ink-soft); padding: 4px 9px; cursor: pointer; font-size: 12px;
+  }
+  .ghostbtn:hover { border-color: var(--accent); color: var(--ink); }
+
+  /* ---------- tabs ---------- */
+  .tabs { display: flex; gap: 6px; }
+  .tabs button {
+    background: var(--panel); border: 1px solid var(--line); border-bottom-color: var(--line);
+    border-radius: 6px 6px 0 0; padding: 7px 22px; cursor: pointer;
+    font-weight: 700; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft);
+  }
+  .tabs button.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+  /* ---------- layout ---------- */
+  .page { display: none; gap: 10px; align-items: flex-start; }
+  .page.on { display: flex; }
+  .rail {
+    width: 216px; flex: none;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .banktabs { display: flex; border-bottom: 1px solid var(--line); }
+  .banktabs button {
+    flex: 1; background: var(--panel-2); border: none; border-right: 1px solid var(--line-soft);
+    padding: 6px 0; cursor: pointer; font-weight: 700; font-size: 12px; color: var(--ink-soft);
+  }
+  .banktabs button:last-child { border-right: none; }
+  .banktabs button.on { background: var(--accent-soft); color: var(--accent); }
+  .patchlist { overflow-y: auto; max-height: 520px; }
+  .patchlist button {
+    display: flex; gap: 8px; width: 100%; text-align: left;
+    background: transparent; border: none; border-bottom: 1px solid var(--line-soft);
+    padding: 4px 10px; cursor: pointer; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+  }
+  .patchlist button:hover { background: var(--accent-soft); }
+  .patchlist button.on { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+  .patchlist .num { color: var(--ink-soft); }
+  .railactions { border-top: 1px solid var(--line); padding: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .railactions button {
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px;
+    padding: 5px 4px; cursor: pointer; font-size: 11.5px;
+  }
+  .railactions button:hover { border-color: var(--accent); }
+  .railactions button.wide { grid-column: 1 / -1; }
+  .railhint { padding: 6px 10px 9px; font-size: 10.5px; color: var(--ink-soft); line-height: 1.4; }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  .panelrow { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow);
+    padding: 8px 10px 9px;
+  }
+  .panel h3 {
+    margin: 0 0 6px; font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 700;
+  }
+  .cells { display: flex; gap: 4px; align-items: flex-end; flex-wrap: wrap; }
+  .divider { width: 1px; align-self: stretch; background: var(--line-soft); margin: 0 4px; }
+
+  /* ---------- param cells ---------- */
+  .cell { width: 52px; display: flex; flex-direction: column; gap: 2px; }
+  .cell .lab {
+    font-size: 8.5px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 600; white-space: nowrap; overflow: hidden;
+  }
+  .cell .val {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px;
+    color: var(--ink); white-space: nowrap;
+  }
+  input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: ew-resize; }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 5px; border-radius: 3px; background: var(--well); border: 1px solid var(--line);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 13px; height: 13px; border-radius: 3px;
+    background: var(--accent); margin-top: -5px; border: 1px solid color-mix(in srgb, var(--accent) 60%, black);
+  }
+  input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cell select { width: 100%; padding: 2px 3px; font-size: 11px; }
+  .toggle {
+    border: 1px solid var(--line); border-radius: 4px; background: var(--well);
+    padding: 3px 0; font-size: 10.5px; cursor: pointer; color: var(--ink-soft); width: 100%;
+  }
+  .toggle.on { background: var(--accent); border-color: var(--accent); color: var(--btn-ink); font-weight: 700; }
+
+  /* ---------- operator strips ---------- */
+  .opstrip {
+    display: flex; gap: 6px; align-items: flex-end;
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--ink-soft);
+    border-radius: 6px; box-shadow: var(--shadow); padding: 4px 10px 6px;
+  }
+  .opstrip.carrier { border-left-color: var(--carrier); }
+  .opstrip.modulator { border-left-color: var(--accent); }
+  .opbadge { width: 70px; flex: none; display: flex; flex-direction: column; gap: 2px; align-self: stretch; justify-content: flex-end; }
+  .opbadge .name { font-weight: 800; font-size: 13px; }
+  .opbadge .role { font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+  .egsvg { width: 88px; height: 30px; flex: none; }
+  .egsvg polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+  .egsvg .fill { fill: var(--accent-soft); stroke: none; }
+  .freqread { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10.5px; color: var(--carrier); white-space: nowrap; }
+  .wavesvg { width: 100%; height: 20px; display: block; }
+  .wavesvg path { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+  .wavesvg line { stroke: var(--line); stroke-width: 1; }
+
+  /* ---------- algorithm panel ---------- */
+  .algorow { display: flex; gap: 8px; align-items: flex-end; }
+  .algsvg { width: 88px; height: 88px; background: var(--well); border: 1px solid var(--line); border-radius: 4px; }
+  .algsvg rect.node { fill: var(--panel); stroke: var(--ink-soft); stroke-width: 1.4; }
+  .algsvg rect.node.car { stroke: var(--carrier); fill: color-mix(in srgb, var(--carrier) 12%, var(--panel)); }
+  .algsvg text { font: 700 9px ui-monospace, Menlo, monospace; fill: var(--ink); }
+  .algsvg path, .algsvg line { stroke: var(--ink-soft); stroke-width: 1.3; fill: none; }
+  .algbtns { display: grid; grid-template-columns: repeat(4, 26px); gap: 4px; }
+  .algbtns button {
+    height: 24px; border: 1px solid var(--line); border-radius: 4px; background: var(--well);
+    cursor: pointer; font-weight: 700; font-size: 11px; color: var(--ink-soft);
+  }
+  .algbtns button.on { background: var(--accent); border-color: var(--accent); color: var(--btn-ink); }
+
+  /* ---------- perf strips ---------- */
+  .inststrip {
+    display: flex; gap: 6px; align-items: flex-end;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow);
+    padding: 6px 10px 8px;
+  }
+  .inststrip.off { opacity: .55; }
+  .instbadge { width: 58px; flex: none; }
+  .instbadge .name { font-weight: 800; font-size: 13px; }
+  .cell.wid { width: 124px; }
+  .cell.mid { width: 76px; }
+
+  /* ---------- footer ---------- */
+  .footer { display: flex; gap: 14px; align-items: center; }
+  .kbd { display: flex; user-select: none; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--panel); box-shadow: var(--shadow); }
+  .kbd .white { width: 26px; height: 46px; background: var(--panel); border-right: 1px solid var(--line-soft); position: relative; cursor: pointer; }
+  .kbd .white:active, .kbd .white.down { background: var(--accent-soft); }
+  .kbd .black { width: 16px; height: 28px; background: var(--ink); margin: 0 -8px; z-index: 2; position: relative; cursor: pointer; border-radius: 0 0 3px 3px; }
+  .kbd .black:active, .kbd .black.down { background: var(--accent); }
+  .status { flex: 1; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--ink-soft); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- modal ---------- */
+  dialog {
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: var(--shadow); padding: 14px; min-width: 320px;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h3 { margin: 0 0 8px; font-size: 13px; }
+  .banklist { max-height: 420px; overflow-y: auto; border: 1px solid var(--line); border-radius: 4px; }
+  .banklist button {
+    display: block; width: 100%; text-align: left; background: transparent; border: none;
+    border-bottom: 1px solid var(--line-soft); padding: 5px 10px; cursor: pointer;
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+  }
+  .banklist button:hover { background: var(--accent-soft); }
+  .modalfoot { display: flex; gap: 10px; margin-top: 10px; align-items: center; justify-content: flex-end; font-size: 12px; }
+
+  .warn { color: var(--led-bad); }
+  @media (max-width: 1100px) { .cell { width: 48px; } .opbadge { width: 58px; } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ======== rack strip ======== -->
+  <div class="rack">
+    <div class="brand">
+      <div class="logo">TX<em>81Z</em></div>
+      <div class="sub">FM Tone Editor</div>
+    </div>
+    <div class="lcd">
+      <div id="lcd1">** WELCOME **</div>
+      <div class="row2" id="lcd2">WEB MIDI EDITOR</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="field"><label for="midiIn">MIDI In</label><select id="midiIn"></select></div>
+    <div class="field"><label for="midiOut">MIDI Out</label><select id="midiOut"></select></div>
+    <div class="field"><label for="midiCh">Channel</label><select id="midiCh"></select></div>
+    <div class="led" id="led" title="MIDI status"></div>
+    <button class="ghostbtn" id="themeBtn" title="Toggle light/dark">◐</button>
+  </div>
+
+  <!-- ======== tabs ======== -->
+  <div class="tabs">
+    <button id="tabVoice" class="on">Voice</button>
+    <button id="tabPerf">Performance</button>
+  </div>
+
+  <!-- ======== voice page ======== -->
+  <div class="page on" id="pageVoice">
+    <div class="rail">
+      <div class="banktabs" id="bankTabs"></div>
+      <div class="patchlist" id="voiceList"></div>
+      <div class="railactions">
+        <button id="vGet" title="Request the edit buffer from the unit">Get</button>
+        <button id="vSend" title="Send the editor's voice to the unit's edit buffer">Send</button>
+        <button id="vInit">Init</button>
+        <button id="vScanI" title="Read user bank I names via a VMEM dump">Scan I</button>
+        <button id="vOpen" class="wide">Open .syx…</button>
+        <button id="vSave" class="wide">Save .syx</button>
+      </div>
+      <div class="railhint">Click a patch to recall it on the unit and load it here. Store edits from the front panel (STORE) — single voices can only be sent to the edit buffer.</div>
+    </div>
+    <div class="main" id="voiceMain"></div>
+  </div>
+
+  <!-- ======== performance page ======== -->
+  <div class="page" id="pagePerf">
+    <div class="rail">
+      <div class="banktabs"><button class="on" style="cursor:default">PF 1–24</button></div>
+      <div class="patchlist" id="perfList"></div>
+      <div class="railactions">
+        <button id="pGet" title="Request the performance edit buffer">Get</button>
+        <button id="pSend" title="Send the editor's performance to the unit's edit buffer">Send</button>
+        <button id="pInit">Init</button>
+        <button id="pScan" title="Read PF names via a PMEM dump">Scan PF</button>
+        <button id="pOpen" class="wide">Open .syx…</button>
+        <button id="pSave" class="wide">Save .syx</button>
+      </div>
+      <div class="railhint">A performance layers up to 8 instruments, each playing one of the 160 voices.</div>
+    </div>
+    <div class="main" id="perfMain"></div>
+  </div>
+
+  <!-- ======== footer ======== -->
+  <div class="footer">
+    <button class="ghostbtn" id="octDown">−</button>
+    <div class="kbd" id="kbd"></div>
+    <button class="ghostbtn" id="octUp">+</button>
+    <div class="field" style="width:110px"><label for="vel">Velocity <span id="velVal">100</span></label>
+      <input type="range" id="vel" min="1" max="127" value="100"></div>
+    <div class="status" id="status">—</div>
+  </div>
+</div>
+
+<dialog id="bankDialog">
+  <h3 id="bankDialogTitle">Bank file</h3>
+  <div class="banklist" id="bankDialogList"></div>
+  <div class="modalfoot">
+    <label><input type="checkbox" id="bankDialogSend" checked> also send to unit</label>
+    <button class="ghostbtn" id="bankDialogClose">Close</button>
+  </div>
+</dialog>
+
+<input type="file" id="filePick" accept=".syx,.SYX" hidden>
+
+<script src="tx81z-data.js"></script>
+<script src="tx81z-core.js"></script>
+<script>
+"use strict";
+/* ============================================================================
+ * app — MIDI plumbing, state, UI. Layers:
+ *   Midi   Web MIDI ports; the ONLY place bytes enter/leave; one paced queue
+ *          with per-key trailing coalescing (slider drags collapse).
+ *   Store  editor state (voice, perf) + patch-name caches + prefs.
+ *   UI     built from descriptor tables; a registry maps state keys ->
+ *          controls so loads repaint everything in one pass.
+ * ==========================================================================*/
+
+const $ = (id) => document.getElementById(id);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+/* ------------------------------ theme ----------------------------------- */
+(function initTheme() {
+  const saved = localStorage.getItem("tx81z:theme");
+  if (saved) document.documentElement.dataset.theme = saved;
+  $("themeBtn").addEventListener("click", () => {
+    const cur = document.documentElement.dataset.theme ||
+      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const next = cur === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("tx81z:theme", next);
+  });
+})();
+
+/* ------------------------------ status ---------------------------------- */
+function status(msg, warn) {
+  const el = $("status");
+  el.textContent = msg;
+  el.classList.toggle("warn", !!warn);
+}
+
+/* ------------------------------ Midi ------------------------------------ */
+const Midi = {
+  access: null, in: null, out: null, channel: 0,
+  _queue: [], _coalesced: new Map(), _timer: null,
+  onSysex: null,
+
+  async init() {
+    if (!navigator.requestMIDIAccess) { status("Web MIDI unavailable — use Chrome", true); return; }
+    try {
+      this.access = await navigator.requestMIDIAccess({ sysex: true });
+    } catch (e) {
+      status("MIDI access denied (sysex permission needed)", true); return;
+    }
+    this.access.onstatechange = () => this.refreshPorts();
+    this.refreshPorts();
+  },
+
+  refreshPorts() {
+    const prefs = JSON.parse(localStorage.getItem("tx81z:midi") || "{}");
+    const fill = (sel, ports, wantId) => {
+      sel.innerHTML = "";
+      const none = document.createElement("option");
+      none.value = ""; none.textContent = "— none —";
+      sel.appendChild(none);
+      let found = "";
+      for (const p of ports.values()) {
+        const o = document.createElement("option");
+        o.value = p.id; o.textContent = p.name;
+        if (p.id === wantId || (!found && /tx81z|umc|usb midi/i.test(p.name) && !wantId)) found = p.id;
+        sel.appendChild(o);
+      }
+      sel.value = found;
+      return found;
+    };
+    const inId = fill($("midiIn"), this.access.inputs, prefs.in);
+    const outId = fill($("midiOut"), this.access.outputs, prefs.out);
+    this.channel = clamp(prefs.ch | 0, 0, 15);
+    $("midiCh").value = String(this.channel);
+    this._bind(inId, outId);
+  },
+
+  _bind(inId, outId) {
+    if (this.in) this.in.onmidimessage = null;
+    this.in = inId ? this.access.inputs.get(inId) : null;
+    this.out = outId ? this.access.outputs.get(outId) : null;
+    if (this.in) this.in.onmidimessage = (e) => this._onMessage(e);
+    $("led").classList.toggle("ok", !!(this.in && this.out));
+    this.savePrefs();
+  },
+
+  savePrefs() {
+    localStorage.setItem("tx81z:midi", JSON.stringify({
+      in: this.in ? this.in.id : "", out: this.out ? this.out.id : "", ch: this.channel,
+    }));
+  },
+
+  _onMessage(e) {
+    const d = e.data;
+    if (d[0] !== 0xf0) return;
+    blinkLed();
+    const m = TXC.classify(d);
+    if (m && this.onSysex) this.onSysex(m);
+  },
+
+  // Paced queue. gap = ms to wait AFTER this message before the next.
+  enqueue(bytes, { gap = 30, coalesceKey } = {}) {
+    if (!this.out) { status("No MIDI out selected", true); return; }
+    if (coalesceKey && this._coalesced.has(coalesceKey)) {
+      this._coalesced.get(coalesceKey).bytes = bytes;
+      return;
+    }
+    const item = { bytes, gap, coalesceKey };
+    this._queue.push(item);
+    if (coalesceKey) this._coalesced.set(coalesceKey, item);
+    if (!this._timer) this._pump();
+  },
+
+  _pump() {
+    const item = this._queue.shift();
+    if (!item) { this._timer = null; return; }
+    if (item.coalesceKey) this._coalesced.delete(item.coalesceKey);
+    try { this.out.send(item.bytes); blinkLed(); } catch (e) { status("MIDI send failed: " + e.message, true); }
+    this._timer = setTimeout(() => this._pump(), item.gap);
+  },
+
+  // Channel messages (notes) skip the queue — they must feel immediate.
+  sendNow(bytes) { if (this.out) try { this.out.send(bytes); } catch (e) {} },
+};
+
+let ledTimer = null;
+function blinkLed() {
+  const led = $("led");
+  led.classList.add("blink");
+  clearTimeout(ledTimer);
+  ledTimer = setTimeout(() => led.classList.remove("blink"), 140);
+}
+
+$("midiIn").addEventListener("change", () => Midi._bind($("midiIn").value, Midi.out ? Midi.out.id : ""));
+$("midiOut").addEventListener("change", () => Midi._bind(Midi.in ? Midi.in.id : "", $("midiOut").value));
+(function fillCh() {
+  const sel = $("midiCh");
+  for (let i = 0; i < 16; i++) {
+    const o = document.createElement("option");
+    o.value = String(i); o.textContent = String(i + 1);
+    sel.appendChild(o);
+  }
+  sel.addEventListener("change", () => { Midi.channel = sel.value | 0; Midi.savePrefs(); });
+})();
+
+/* ------------------------------ Store ----------------------------------- */
+const Store = {
+  voice: TXD.initVoice(),
+  perf: TXD.initPerformance(),
+  loc: null,          // { mode:'voice', bank, num } | { mode:'perf', num }
+  names: {
+    I: JSON.parse(localStorage.getItem("tx81z:names:I") || "null") || Array(32).fill(""),
+    PF: JSON.parse(localStorage.getItem("tx81z:names:PF") || "null") || Array(24).fill(""),
+  },
+  saveNames() {
+    localStorage.setItem("tx81z:names:I", JSON.stringify(this.names.I));
+    localStorage.setItem("tx81z:names:PF", JSON.stringify(this.names.PF));
+  },
+  voiceName(value) {  // 0-159 -> "A01 GrandPiano"
+    const bank = TXD.BANKS[Math.floor(value / 32)], num = value % 32;
+    const nm = bank === "I" ? (this.names.I[num] || "") : TXD.FACTORY_NAMES[bank][num];
+    return bank + String(num + 1).padStart(2, "0") + (nm ? " " + nm : "");
+  },
+};
+
+function updateLcd() {
+  const inVoice = $("tabVoice").classList.contains("on");
+  const name = inVoice ? Store.voice.name : Store.perf.name;
+  let locStr = "EDIT BUF";
+  if (Store.loc && Store.loc.mode === "voice" && inVoice)
+    locStr = TXD.BANKS[Store.loc.bank] + String(Store.loc.num + 1).padStart(2, "0");
+  if (Store.loc && Store.loc.mode === "perf" && !inVoice)
+    locStr = "PF" + String(Store.loc.num + 1).padStart(2, "0");
+  $("lcd1").textContent = (locStr + "  " + name).padEnd(16);
+  $("lcd2").textContent = inVoice ? "VOICE  MODE" : "PERFORM MODE";
+}
+
+/* ------------------------------ registry --------------------------------- */
+// key -> {update()} so a bulk load repaints every control.
+const Reg = new Map();
+function regSet(key, fns) { Reg.set(key, fns); }
+function repaintAll(prefix) {
+  for (const [k, r] of Reg) if (!prefix || k.startsWith(prefix)) r.update();
+  refreshDerived();
+}
+
+/* ------------------------- generic cell builders -------------------------- */
+function makeCell(parent, width) {
+  const cell = document.createElement("div");
+  cell.className = "cell" + (width ? " " + width : "");
+  parent.appendChild(cell);
+  return cell;
+}
+
+// numeric slider cell. spec: {key,label,min,max,get,set,emit,fmt,width}
+function sliderCell(parent, spec) {
+  const cell = makeCell(parent, spec.width);
+  const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = spec.label;
+  const input = document.createElement("input");
+  input.type = "range"; input.min = spec.min; input.max = spec.max; input.value = spec.get();
+  const val = document.createElement("div"); val.className = "val";
+  cell.append(lab, input, val);
+  const fmt = spec.fmt || ((v) => String(v));
+  const paint = () => { val.textContent = fmt(spec.get()); input.value = spec.get(); };
+  const commit = (v) => {
+    v = clamp(v | 0, spec.min, spec.max);
+    if (v === spec.get()) { paint(); return; }
+    spec.set(v); paint(); refreshDerived();
+    if (spec.emit) spec.emit(v);
+  };
+  input.addEventListener("input", () => commit(input.value | 0));
+  cell.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    commit(spec.get() + (e.deltaY < 0 ? 1 : -1));
+  }, { passive: false });
+  paint();
+  regSet(spec.key, { update: paint });
+  return cell;
+}
+
+// enum dropdown cell. spec: {key,label,options,get,set,emit,width}
+function selectCell(parent, spec) {
+  const cell = makeCell(parent, spec.width);
+  const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = spec.label;
+  const sel = document.createElement("select");
+  spec.options.forEach((name, i) => {
+    const o = document.createElement("option");
+    o.value = String(i); o.textContent = name;
+    sel.appendChild(o);
+  });
+  cell.append(lab, sel);
+  const paint = () => { sel.value = String(spec.get()); };
+  sel.addEventListener("change", () => {
+    spec.set(sel.value | 0); refreshDerived();
+    if (spec.emit) spec.emit(sel.value | 0);
+  });
+  paint();
+  regSet(spec.key, { update: paint });
+  return cell;
+}
+
+// on/off button cell. spec: {key,label,onText,offText,get,set,emit,width}
+function toggleCell(parent, spec) {
+  const cell = makeCell(parent, spec.width);
+  const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = spec.label;
+  const btn = document.createElement("button"); btn.className = "toggle"; btn.type = "button";
+  cell.append(lab, btn);
+  const paint = () => {
+    const on = !!spec.get();
+    btn.classList.toggle("on", on);
+    btn.textContent = on ? (spec.onText || "On") : (spec.offText || "Off");
+  };
+  btn.addEventListener("click", () => {
+    spec.set(spec.get() ? 0 : 1); paint(); refreshDerived();
+    if (spec.emit) spec.emit(spec.get());
+  });
+  paint();
+  regSet(spec.key, { update: paint });
+  return cell;
+}
+
+function divider(parent) {
+  const d = document.createElement("div");
+  d.className = "divider";
+  parent.appendChild(d);
+}
+
+/* --------------------------- voice param emit ----------------------------- */
+function emitVced(pp) {
+  return (v) => Midi.enqueue(TXC.paramChange(Midi.channel, TXD.GROUP_VCED, pp, v), { gap: 25, coalesceKey: "v" + pp });
+}
+function emitAced(pp) {
+  return (v) => Midi.enqueue(TXC.paramChange(Midi.channel, TXD.GROUP_ACED, pp, v), { gap: 25, coalesceKey: "a" + pp });
+}
+function emitPced(pp) {
+  return (v) => Midi.enqueue(TXC.paramChange(Midi.channel, TXD.GROUP_PCED, pp, v), { gap: 25, coalesceKey: "p" + pp });
+}
+
+// VCED/ACED PP numbers for per-op params: dump slot of op * stride + offset.
+const vppOp = (op, off) => TXD.OP_SLOT[op] * 13 + off;
+const appOp = (op, off) => TXD.OP_SLOT[op] * 5 + off;
+
+/* ------------------------------ SVG helpers ------------------------------- */
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+// operator waveform W1..W8 as a path
+function wavePath(w, W, H) {
+  const N = 96, pts = [];
+  const pinched = (w % 2) === 1;              // W2/4/6/8 = pinched variants
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    let y = 0;
+    const lobe = (x) => pinched ? Math.sign(Math.sin(x)) * Math.sin(x) * Math.sin(x) : Math.sin(x);
+    if (w < 2) y = lobe(2 * Math.PI * t);                                  // full cycle
+    else if (w < 4) y = t < 0.5 ? lobe(2 * Math.PI * t) : 0;               // half + silence
+    else if (w < 6) y = t < 0.5 ? lobe(4 * Math.PI * t) : 0;               // dbl speed + silence
+    else y = t < 0.5 ? Math.abs(lobe(4 * Math.PI * t)) : 0;                // rectified + silence
+    pts.push((t * W).toFixed(1) + "," + (H / 2 - y * (H / 2 - 1.5)).toFixed(1));
+  }
+  return "M" + pts.join(" L");
+}
+
+function makeWaveSvg(container) {
+  const svg = svgEl("svg", { class: "wavesvg", viewBox: "0 0 60 20", preserveAspectRatio: "none" });
+  svg.appendChild(svgEl("line", { x1: 0, y1: 10, x2: 60, y2: 10 }));
+  const path = svgEl("path", { d: wavePath(0, 60, 20) });
+  svg.appendChild(path);
+  container.appendChild(svg);
+  return (w) => path.setAttribute("d", wavePath(w, 60, 20));
+}
+
+// envelope thumbnail from AR/D1R/D1L/D2R/RR
+function egPoints(o, W, H) {
+  const inv = (r, max) => (max - r) / max;                    // slow rate = long time
+  const tA = 0.06 + 0.30 * inv(o.ar, 31);
+  const tD1 = 0.08 + 0.34 * inv(o.d1r, 31);
+  const tD2 = 0.22;
+  const tR = 0.06 + 0.26 * inv(o.rr, 15);
+  const l1 = o.d1l / 15;
+  const l2 = o.d2r === 0 ? l1 : l1 * 0.35;
+  const xs = [0, tA, tA + tD1, tA + tD1 + tD2, Math.min(1, tA + tD1 + tD2 + tR)];
+  const ys = [0, 1, l1, l2, 0];
+  const total = xs[4];
+  return xs.map((x, i) => ((x / total) * (W - 2) + 1).toFixed(1) + "," + ((1 - ys[i]) * (H - 4) + 2).toFixed(1)).join(" ");
+}
+
+function makeEgSvg(container, op) {
+  const svg = svgEl("svg", { class: "egsvg", viewBox: "0 0 96 40", preserveAspectRatio: "none" });
+  const fill = svgEl("polygon", { class: "fill", points: "" });
+  const line = svgEl("polyline", { points: "" });
+  svg.append(fill, line);
+  container.appendChild(svg);
+  return () => {
+    const pts = egPoints(Store.voice.ops[op], 96, 40);
+    line.setAttribute("points", pts);
+    fill.setAttribute("points", "1,38 " + pts + " 95,38");
+  };
+}
+
+// algorithm diagram
+function drawAlgorithm(svg, algIndex, fb) {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const alg = TXD.ALGORITHMS[algIndex];
+  const cols = Math.max(...Object.values(alg.pos).map((p) => p[0])) + 1;
+  const rows = Math.max(...Object.values(alg.pos).map((p) => p[1])) + 1;
+  const S = 20, PAD = 12;
+  const W = 104, H = 104;
+  const gx = (c) => PAD + (c + 0.5) * ((W - 2 * PAD) / cols) - S / 2;
+  const gy = (r) => H - PAD - (r + 0.5) * ((H - 2 * PAD) / rows) - S / 2;
+  const center = {};
+  for (let op = 1; op <= 4; op++) {
+    const [c, r] = alg.pos[op];
+    center[op] = [gx(c) + S / 2, gy(r) + S / 2];
+  }
+  for (const [from, to] of alg.edges) {
+    svg.appendChild(svgEl("line", {
+      x1: center[from][0], y1: center[from][1], x2: center[to][0], y2: center[to][1],
+    }));
+  }
+  // output stems + feedback loop on OP4
+  for (const op of alg.carriers) {
+    svg.appendChild(svgEl("line", { x1: center[op][0], y1: center[op][1] + S / 2, x2: center[op][0], y2: center[op][1] + S / 2 + 8 }));
+  }
+  // feedback loop: out of OP4's right edge, over the top, back into its top edge
+  const [fx, fy] = center[4];
+  svg.appendChild(svgEl("path", {
+    d: `M ${fx + S / 2} ${fy - 4} h 8 v ${-(S / 2 + 2)} h ${-(S / 2 + 8)} v 4`,
+  }));
+  for (let op = 1; op <= 4; op++) {
+    const [c, r] = alg.pos[op];
+    svg.appendChild(svgEl("rect", {
+      class: "node" + (alg.carriers.includes(op) ? " car" : ""),
+      x: gx(c), y: gy(r), width: S, height: S, rx: 3,
+    }));
+    const t = svgEl("text", { x: gx(c) + S / 2 - 2.8, y: gy(r) + S / 2 + 3.4 });
+    t.textContent = String(op);
+    svg.appendChild(t);
+  }
+}
+
+/* --------------------------- voice page build ----------------------------- */
+const V = () => Store.voice;
+const opRefs = [];      // per-op: {strip, roleEl, egPaint, wavePaint, freqEl}
+let algSvg = null;
+
+function buildVoicePage() {
+  const main = $("voiceMain");
+
+  /* -- top panel row: name+algorithm / lfo / function / controllers -- */
+  const row = document.createElement("div"); row.className = "panelrow";
+  main.appendChild(row);
+
+  // algorithm panel
+  const algPanel = document.createElement("div"); algPanel.className = "panel";
+  algPanel.innerHTML = "<h3>Algorithm &amp; Common</h3>";
+  const algRow = document.createElement("div"); algRow.className = "algorow";
+  algSvg = svgEl("svg", { class: "algsvg", viewBox: "0 0 104 104" });
+  algRow.appendChild(algSvg);
+  const algRight = document.createElement("div");
+  algRight.style.cssText = "display:flex;flex-direction:column;gap:6px";
+  const algBtns = document.createElement("div"); algBtns.className = "algbtns";
+  for (let i = 0; i < 8; i++) {
+    const b = document.createElement("button");
+    b.textContent = String(i + 1);
+    b.addEventListener("click", () => {
+      V().alg = i; repaintAll(); emitVced(52)(i);
+    });
+    algBtns.appendChild(b);
+  }
+  regSet("alg", { update: () => {
+    [...algBtns.children].forEach((b, i) => b.classList.toggle("on", i === V().alg));
+  } });
+  algRight.appendChild(algBtns);
+  const algCells = document.createElement("div"); algCells.className = "cells";
+  sliderCell(algCells, { key: "fb", label: "Feedback", min: 0, max: 7, get: () => V().fb, set: (v) => V().fb = v, emit: emitVced(53) });
+  algRight.appendChild(algCells);
+  algRow.appendChild(algRight);
+  algPanel.appendChild(algRow);
+  row.appendChild(algPanel);
+
+  // LFO panel
+  const lfo = document.createElement("div"); lfo.className = "panel";
+  lfo.innerHTML = "<h3>LFO</h3>";
+  const lc = document.createElement("div"); lc.className = "cells";
+  selectCell(lc, { key: "lfw", label: "Wave", options: TXD.LFO_WAVES, get: () => V().lfw, set: (v) => V().lfw = v, emit: emitVced(59), width: "mid" });
+  sliderCell(lc, { key: "lfs", label: "Speed", min: 0, max: 99, get: () => V().lfs, set: (v) => V().lfs = v, emit: emitVced(54) });
+  sliderCell(lc, { key: "lfd", label: "Delay", min: 0, max: 99, get: () => V().lfd, set: (v) => V().lfd = v, emit: emitVced(55) });
+  toggleCell(lc, { key: "sync", label: "Sync", get: () => V().sync, set: (v) => V().sync = v, emit: emitVced(58) });
+  divider(lc);
+  sliderCell(lc, { key: "pmd", label: "PM Depth", min: 0, max: 99, get: () => V().pmd, set: (v) => V().pmd = v, emit: emitVced(56) });
+  sliderCell(lc, { key: "pms", label: "PM Sens", min: 0, max: 7, get: () => V().pms, set: (v) => V().pms = v, emit: emitVced(60) });
+  sliderCell(lc, { key: "amd", label: "AM Depth", min: 0, max: 99, get: () => V().amd, set: (v) => V().amd = v, emit: emitVced(57) });
+  sliderCell(lc, { key: "ams", label: "AM Sens", min: 0, max: 3, get: () => V().ams, set: (v) => V().ams = v, emit: emitVced(61) });
+  lfo.appendChild(lc);
+  row.appendChild(lfo);
+
+  // function panel
+  const fn = document.createElement("div"); fn.className = "panel";
+  fn.innerHTML = "<h3>Function</h3>";
+  const fc = document.createElement("div"); fc.className = "cells";
+  sliderCell(fc, { key: "trps", label: "Transpose", min: 0, max: 48, get: () => V().trps, set: (v) => V().trps = v, emit: emitVced(62), fmt: (v) => (v - 24 > 0 ? "+" : "") + (v - 24) });
+  sliderCell(fc, { key: "pbr", label: "P.Bend", min: 0, max: 12, get: () => V().pbr, set: (v) => V().pbr = v, emit: emitVced(64) });
+  toggleCell(fc, { key: "mono", label: "Mode", onText: "Mono", offText: "Poly", get: () => V().mono, set: (v) => V().mono = v, emit: emitVced(63) });
+  divider(fc);
+  toggleCell(fc, { key: "portm", label: "Port Mode", onText: "Full", offText: "Fingr", get: () => V().portm, set: (v) => V().portm = v, emit: emitVced(65) });
+  sliderCell(fc, { key: "portt", label: "Port Time", min: 0, max: 99, get: () => V().portt, set: (v) => V().portt = v, emit: emitVced(66) });
+  divider(fc);
+  sliderCell(fc, { key: "rev", label: "Reverb", min: 0, max: 7, get: () => V().rev, set: (v) => V().rev = v, emit: emitAced(20), fmt: (v) => TXD.REVERB_RATES[v] });
+  fn.appendChild(fc);
+  row.appendChild(fn);
+
+  // controllers panel
+  const ctl = document.createElement("div"); ctl.className = "panel";
+  ctl.innerHTML = "<h3>Controllers</h3>";
+  const cc = document.createElement("div"); cc.className = "cells";
+  sliderCell(cc, { key: "mwp", label: "MW Pitch", min: 0, max: 99, get: () => V().mwp, set: (v) => V().mwp = v, emit: emitVced(71) });
+  sliderCell(cc, { key: "mwa", label: "MW Amp", min: 0, max: 99, get: () => V().mwa, set: (v) => V().mwa = v, emit: emitVced(72) });
+  divider(cc);
+  sliderCell(cc, { key: "bcp", label: "BC Pitch", min: 0, max: 99, get: () => V().bcp, set: (v) => V().bcp = v, emit: emitVced(73) });
+  sliderCell(cc, { key: "bca", label: "BC Amp", min: 0, max: 99, get: () => V().bca, set: (v) => V().bca = v, emit: emitVced(74) });
+  sliderCell(cc, { key: "bcpb", label: "BC P.Bias", min: 0, max: 99, get: () => V().bcpb, set: (v) => V().bcpb = v, emit: emitVced(75), fmt: (v) => (v - 50 > 0 ? "+" : "") + (v - 50) });
+  sliderCell(cc, { key: "bceb", label: "BC EG Bias", min: 0, max: 99, get: () => V().bceb, set: (v) => V().bceb = v, emit: emitVced(76) });
+  divider(cc);
+  sliderCell(cc, { key: "fcvol", label: "FC Volume", min: 0, max: 99, get: () => V().fcvol, set: (v) => V().fcvol = v, emit: emitVced(67) });
+  sliderCell(cc, { key: "fcp", label: "FC Pitch", min: 0, max: 99, get: () => V().fcp, set: (v) => V().fcp = v, emit: emitAced(21) });
+  sliderCell(cc, { key: "fca", label: "FC Amp", min: 0, max: 99, get: () => V().fca, set: (v) => V().fca = v, emit: emitAced(22) });
+  // voice name
+  divider(cc);
+  const nameCell = makeCell(cc, "wid");
+  nameCell.innerHTML = '<div class="lab">Voice name</div>';
+  const nameInput = document.createElement("input");
+  nameInput.type = "text"; nameInput.maxLength = 10; nameInput.value = V().name;
+  nameInput.style.width = "100%";
+  nameInput.addEventListener("change", () => {
+    V().name = TXC.cleanName(nameInput.value);
+    nameInput.value = V().name;
+    const padded = TXC.padName(V().name);
+    for (let i = 0; i < 10; i++) emitVced(77 + i)(padded.charCodeAt(i));
+    updateLcd();
+  });
+  nameCell.appendChild(nameInput);
+  regSet("name", { update: () => { nameInput.value = V().name; } });
+  ctl.appendChild(cc);
+  row.appendChild(ctl);
+
+  /* -- operator strips -- */
+  for (let op = 0; op < 4; op++) main.appendChild(buildOpStrip(op));
+}
+
+function buildOpStrip(op) {
+  const o = () => Store.voice.ops[op];
+  const strip = document.createElement("div"); strip.className = "opstrip";
+
+  const badge = document.createElement("div"); badge.className = "opbadge";
+  const nm = document.createElement("div"); nm.className = "name"; nm.textContent = "OP " + (op + 1);
+  const role = document.createElement("div"); role.className = "role";
+  badge.append(nm, role);
+  const egPaint = makeEgSvg(badge, op);
+  strip.appendChild(badge);
+
+  const cells = document.createElement("div"); cells.className = "cells"; cells.style.flex = "1";
+  strip.appendChild(cells);
+
+  const S = (key, label, min, max, off, group, fmt) => sliderCell(cells, {
+    key: "op" + op + "." + key, label, min, max, fmt,
+    get: () => o()[key], set: (v) => o()[key] = v,
+    emit: group === "a" ? emitAced(appOp(op, off)) : emitVced(vppOp(op, off)),
+  });
+
+  // EG
+  S("ar", "Attack", 0, 31, 0);
+  S("d1r", "Decay 1", 0, 31, 1);
+  S("d1l", "D1 Level", 0, 15, 4);
+  S("d2r", "Decay 2", 0, 31, 2);
+  S("rr", "Release", 1, 15, 3);
+  selectCell(cells, { key: "op" + op + ".shft", label: "EG Shift", options: TXD.EG_SHIFTS,
+    get: () => o().shft, set: (v) => o().shft = v, emit: emitAced(appOp(op, 4)) });
+  divider(cells);
+  // keyboard follow + sensitivity
+  S("ls", "Lvl Scale", 0, 99, 5);
+  S("rs", "Rate Scale", 0, 3, 6);
+  S("ebs", "EG Bias S", 0, 7, 7);
+  S("kvs", "Key Vel S", 0, 7, 9);
+  toggleCell(cells, { key: "op" + op + ".ame", label: "AM Enable",
+    get: () => o().ame, set: (v) => o().ame = v, emit: emitVced(vppOp(op, 8)) });
+  divider(cells);
+  // output
+  S("out", "Out Level", 0, 99, 10);
+  divider(cells);
+  // frequency — the resulting ratio/Hz reads out under the mode toggle
+  const fixCell = toggleCell(cells, { key: "op" + op + ".fix", label: "Freq Mode", onText: "Fixed", offText: "Ratio",
+    get: () => o().fix, set: (v) => o().fix = v, emit: emitAced(appOp(op, 0)), width: "mid" });
+  const fread = document.createElement("div"); fread.className = "freqread"; fread.textContent = "—";
+  fixCell.appendChild(fread);
+  S("fixrg", "Fix Range", 0, 7, 1, "a");
+  S("crs", "Coarse", 0, 63, 11);
+  S("fin", "Fine", 0, 15, 2, "a");
+  S("det", "Detune", 0, 6, 12, undefined, (v) => (v - 3 > 0 ? "+" : "") + (v - 3));
+  divider(cells);
+  // waveform
+  const wcell = makeCell(cells, "mid");
+  wcell.innerHTML = '<div class="lab">Wave</div>';
+  const wavePaint = makeWaveSvg(wcell);
+  const wslider = document.createElement("input");
+  wslider.type = "range"; wslider.min = 0; wslider.max = 7; wslider.value = o().opw;
+  const wval = document.createElement("div"); wval.className = "val";
+  wcell.append(wslider, wval);
+  const paintWave = () => {
+    wslider.value = o().opw; wval.textContent = "W" + (o().opw + 1); wavePaint(o().opw);
+  };
+  wslider.addEventListener("input", () => {
+    o().opw = wslider.value | 0; paintWave();
+    emitAced(appOp(op, 3))(o().opw);
+  });
+  paintWave();
+  regSet("op" + op + ".opw", { update: paintWave });
+
+  opRefs[op] = {
+    strip, roleEl: role, egPaint,
+    freqPaint: () => {
+      const x = o();
+      if (x.fix) fread.textContent = TXD.fixedFrequency(x.fixrg, x.crs, x.fin) + " Hz";
+      else fread.textContent = "× " + TXD.fineRatio(x.crs, x.crs < 4 ? Math.min(x.fin, 7) : x.fin).toFixed(2);
+    },
+  };
+  return strip;
+}
+
+/* --------------------------- perf page build ------------------------------ */
+const P = () => Store.perf;
+const instRefs = [];
+const voiceSelects = [];   // perf-tab voice dropdowns, relabeled after an I-bank scan
+
+function refreshVoiceOptionLabels() {
+  for (const sel of voiceSelects) {
+    for (const opt of sel.options) opt.textContent = Store.voiceName(opt.value | 0);
+  }
+}
+
+function voiceOptions() {
+  // 160 options grouped I/A/B/C/D with names
+  const groups = [];
+  for (let b = 0; b < 5; b++) {
+    const g = document.createElement("optgroup");
+    g.label = "Bank " + TXD.BANKS[b];
+    for (let n = 0; n < 32; n++) {
+      const o = document.createElement("option");
+      o.value = String(b * 32 + n);
+      o.textContent = Store.voiceName(b * 32 + n);
+      g.appendChild(o);
+    }
+    groups.push(g);
+  }
+  return groups;
+}
+
+function buildPerfPage() {
+  const main = $("perfMain");
+
+  // common panel
+  const row = document.createElement("div"); row.className = "panelrow";
+  const common = document.createElement("div"); common.className = "panel";
+  common.innerHTML = "<h3>Common</h3>";
+  const cc = document.createElement("div"); cc.className = "cells";
+  selectCell(cc, { key: "pf.effect", label: "Effect", options: TXD.EFFECTS, get: () => P().effect, set: (v) => P().effect = v, emit: emitPced(98), width: "mid" });
+  selectCell(cc, { key: "pf.assign", label: "Assign", options: TXD.ASSIGN_MODES, get: () => P().assign, set: (v) => P().assign = v, emit: emitPced(97), width: "mid" });
+  divider(cc);
+  selectCell(cc, { key: "pf.microtable", label: "Microtune", options: TXD.MICROTUNE_TABLES, get: () => P().microtable, set: (v) => P().microtable = v, emit: emitPced(96), width: "wid" });
+  selectCell(cc, { key: "pf.microkey", label: "Key", options: TXD.KEYS, get: () => P().microkey, set: (v) => P().microkey = v, emit: emitPced(99) });
+  divider(cc);
+  const nameCell = makeCell(cc, "wid");
+  nameCell.innerHTML = '<div class="lab">Performance name</div>';
+  const nameInput = document.createElement("input");
+  nameInput.type = "text"; nameInput.maxLength = 10; nameInput.value = P().name;
+  nameInput.style.width = "100%";
+  nameInput.addEventListener("change", () => {
+    P().name = TXC.cleanName(nameInput.value);
+    nameInput.value = P().name;
+    const padded = TXC.padName(P().name);
+    for (let i = 0; i < 10; i++) emitPced(100 + i)(padded.charCodeAt(i));
+    updateLcd();
+  });
+  nameCell.appendChild(nameInput);
+  regSet("pf.name", { update: () => { nameInput.value = P().name; } });
+  common.appendChild(cc);
+  row.appendChild(common);
+  main.appendChild(row);
+
+  // 8 instrument strips
+  for (let i = 0; i < 8; i++) main.appendChild(buildInstStrip(i));
+}
+
+function buildInstStrip(i) {
+  const s = () => Store.perf.insts[i];
+  const strip = document.createElement("div"); strip.className = "inststrip";
+  const badge = document.createElement("div"); badge.className = "instbadge";
+  badge.innerHTML = '<div class="name">INST ' + (i + 1) + "</div>";
+  strip.appendChild(badge);
+
+  const cells = document.createElement("div"); cells.className = "cells"; cells.style.flex = "1";
+  strip.appendChild(cells);
+  const base = i * 12;
+
+  sliderCell(cells, { key: "pf.i" + i + ".maxnotes", label: "Notes", min: 0, max: 8,
+    get: () => s().maxnotes, set: (v) => s().maxnotes = v, emit: emitPced(base + 0) });
+
+  // voice select: emits msb+lsb (PP base+1, base+2)
+  const vcell = makeCell(cells, "wid");
+  vcell.innerHTML = '<div class="lab">Voice</div>';
+  const vsel = document.createElement("select");
+  voiceOptions().forEach((g) => vsel.appendChild(g));
+  vcell.appendChild(vsel);
+  voiceSelects.push(vsel);
+  const paintVoice = () => { vsel.value = String(s().voice); };
+  vsel.addEventListener("change", () => {
+    s().voice = vsel.value | 0;
+    Midi.enqueue(TXC.paramChange(Midi.channel, TXD.GROUP_PCED, base + 1, (s().voice >> 7) & 1), { gap: 25 });
+    Midi.enqueue(TXC.paramChange(Midi.channel, TXD.GROUP_PCED, base + 2, s().voice & 127), { gap: 25 });
+  });
+  paintVoice();
+  regSet("pf.i" + i + ".voice", { update: paintVoice });
+
+  const chNames = [...Array(16).keys()].map((n) => String(n + 1)).concat(["Omni"]);
+  selectCell(cells, { key: "pf.i" + i + ".ch", label: "Channel", options: chNames,
+    get: () => s().ch, set: (v) => s().ch = v, emit: emitPced(base + 3) });
+
+  const noteNames = [...Array(128).keys()].map((n) => TXD.noteName(n));
+  selectCell(cells, { key: "pf.i" + i + ".low", label: "Low key", options: noteNames,
+    get: () => s().low, set: (v) => s().low = v, emit: emitPced(base + 4), width: "mid" });
+  selectCell(cells, { key: "pf.i" + i + ".high", label: "High key", options: noteNames,
+    get: () => s().high, set: (v) => s().high = v, emit: emitPced(base + 5), width: "mid" });
+  divider(cells);
+  sliderCell(cells, { key: "pf.i" + i + ".det", label: "Detune", min: 0, max: 14,
+    get: () => s().det, set: (v) => s().det = v, emit: emitPced(base + 6), fmt: (v) => (v - 7 > 0 ? "+" : "") + (v - 7) });
+  sliderCell(cells, { key: "pf.i" + i + ".shift", label: "N.Shift", min: 0, max: 48,
+    get: () => s().shift, set: (v) => s().shift = v, emit: emitPced(base + 7), fmt: (v) => (v - 24 > 0 ? "+" : "") + (v - 24) });
+  sliderCell(cells, { key: "pf.i" + i + ".vol", label: "Volume", min: 0, max: 99,
+    get: () => s().vol, set: (v) => s().vol = v, emit: emitPced(base + 8) });
+  divider(cells);
+  selectCell(cells, { key: "pf.i" + i + ".out", label: "Out", options: TXD.OUT_ASSIGN,
+    get: () => s().out, set: (v) => s().out = v, emit: emitPced(base + 9) });
+  selectCell(cells, { key: "pf.i" + i + ".lfo", label: "LFO", options: TXD.LFO_SELECT,
+    get: () => s().lfo, set: (v) => s().lfo = v, emit: emitPced(base + 10), width: "mid" });
+  toggleCell(cells, { key: "pf.i" + i + ".micro", label: "Microtune",
+    get: () => s().micro, set: (v) => s().micro = v, emit: emitPced(base + 11) });
+
+  instRefs[i] = { strip };
+  return strip;
+}
+
+/* --------------------------- derived repaints ----------------------------- */
+function refreshDerived() {
+  const v = Store.voice;
+  const alg = TXD.ALGORITHMS[v.alg];
+  if (algSvg) drawAlgorithm(algSvg, v.alg, v.fb);
+  for (let op = 0; op < 4; op++) {
+    const r = opRefs[op];
+    if (!r) continue;
+    const isCar = alg.carriers.includes(op + 1);
+    r.strip.classList.toggle("carrier", isCar);
+    r.strip.classList.toggle("modulator", !isCar);
+    r.roleEl.textContent = isCar ? "Carrier" : "Modulator";
+    r.egPaint();
+    r.freqPaint();
+  }
+  for (let i = 0; i < 8; i++) {
+    if (instRefs[i]) instRefs[i].strip.classList.toggle("off", Store.perf.insts[i].maxnotes === 0);
+  }
+  updateLcd();
+}
+
+/* ------------------------------ patch rail -------------------------------- */
+let currentBank = 1;   // default to A for instant gratification
+
+function buildBankTabs() {
+  const wrap = $("bankTabs");
+  TXD.BANKS.forEach((b, i) => {
+    const btn = document.createElement("button");
+    btn.textContent = b;
+    btn.addEventListener("click", () => { currentBank = i; paintBankTabs(); paintVoiceList(); });
+    wrap.appendChild(btn);
+  });
+  paintBankTabs();
+}
+function paintBankTabs() {
+  [...$("bankTabs").children].forEach((b, i) => b.classList.toggle("on", i === currentBank));
+}
+
+function paintVoiceList() {
+  const list = $("voiceList");
+  list.innerHTML = "";
+  const bank = TXD.BANKS[currentBank];
+  for (let n = 0; n < 32; n++) {
+    const btn = document.createElement("button");
+    const nm = bank === "I" ? (Store.names.I[n] || "· · ·") : TXD.FACTORY_NAMES[bank][n];
+    btn.innerHTML = '<span class="num">' + String(n + 1).padStart(2, "0") + "</span><span>" +
+      nm.replace(/</g, "&lt;") + "</span>";
+    if (Store.loc && Store.loc.mode === "voice" && Store.loc.bank === currentBank && Store.loc.num === n)
+      btn.classList.add("on");
+    btn.addEventListener("click", () => recallVoice(currentBank, n));
+    list.appendChild(btn);
+  }
+}
+
+function paintPerfList() {
+  const list = $("perfList");
+  list.innerHTML = "";
+  for (let n = 0; n < 24; n++) {
+    const btn = document.createElement("button");
+    const nm = Store.names.PF[n] || "· · ·";
+    btn.innerHTML = '<span class="num">' + String(n + 1).padStart(2, "0") + "</span><span>" +
+      nm.replace(/</g, "&lt;") + "</span>";
+    if (Store.loc && Store.loc.mode === "perf" && Store.loc.num === n) btn.classList.add("on");
+    btn.addEventListener("click", () => recallPerf(n));
+    list.appendChild(btn);
+  }
+}
+
+/* ------------------------------ recall ------------------------------------ */
+function requireOut() {
+  if (!Midi.out) { status("No MIDI out selected — pick a port first", true); return false; }
+  return true;
+}
+
+// The unit needs ~0.5s after a program change before it will answer a dump
+// request reliably (Edisyn uses 500ms).
+function recallVoice(bank, num) {
+  if (!requireOut()) return;
+  const [table, sw, pc] = TXC.recallMessages(Midi.channel, bank * 32 + num);
+  Midi.enqueue(table, { gap: 40 });
+  Midi.enqueue(sw, { gap: 40 });
+  Midi.enqueue(pc, { gap: 600 });
+  Midi.enqueue(TXC.requestVoice(Midi.channel), { gap: 40 });
+  Store.loc = { mode: "voice", bank, num };
+  paintVoiceList();
+  status("Recalled " + TXD.BANKS[bank] + String(num + 1).padStart(2, "0") + " — waiting for dump…");
+}
+
+function recallPerf(num) {
+  if (!requireOut()) return;
+  const [table, sw, pc] = TXC.recallMessages(Midi.channel, 160 + num);
+  Midi.enqueue(table, { gap: 40 });
+  Midi.enqueue(sw, { gap: 40 });
+  Midi.enqueue(pc, { gap: 600 });
+  Midi.enqueue(TXC.requestPerf(Midi.channel), { gap: 40 });
+  Store.loc = { mode: "perf", num };
+  paintPerfList();
+  status("Recalled PF" + String(num + 1).padStart(2, "0") + " — waiting for dump…");
+}
+
+/* ------------------------------ receive ----------------------------------- */
+Midi.onSysex = (m) => {
+  switch (m.type) {
+    case "aced":
+      Store.voice = TXC.decodeAced(m.data, Store.voice);
+      repaintAll();
+      status("Received ACED (voice extras)");
+      break;
+    case "vced":
+      Store.voice = TXC.decodeVced(m.data, Store.voice);
+      repaintAll();
+      status("Received voice: " + Store.voice.name);
+      break;
+    case "pced":
+      Store.perf = TXC.decodePced(m.data);
+      repaintAll();
+      status("Received performance: " + Store.perf.name);
+      break;
+    case "vmem": {
+      const voices = TXC.decodeVmem(m.msg);
+      Store.userBank = voices;
+      Store.names.I = voices.map((v) => v.name);
+      Store.saveNames();
+      if (currentBank === 0) paintVoiceList();
+      refreshVoiceOptionLabels();
+      status("Received user bank I (32 voices) — names updated");
+      break;
+    }
+    case "pmem": {
+      const perfs = TXC.decodePmem(m.msg);
+      Store.perfBank = perfs;
+      Store.names.PF = perfs.map((p) => p.name);
+      Store.saveNames();
+      paintPerfList();
+      status("Received PF bank (24 performances) — names updated");
+      break;
+    }
+    case "param":
+      // front-panel edit on the unit, echoed to MIDI — mirror it in the editor
+      if (applyParamFromUnit(m.group, m.pp, m.vv)) {
+        repaintAll();
+        status("Unit edit mirrored (group " + m.group.toString(16) + " pp " + m.pp + " = " + m.vv + ")");
+      }
+      break;
+  }
+};
+
+/* ---------------------- incoming param-change mirror ----------------------
+ * Field order matches the dump layouts in tx81z-core.js. */
+const VCED_OP_FIELDS = ["ar", "d1r", "d2r", "rr", "d1l", "ls", "rs", "ebs", "ame", "kvs", "out", "crs", "det"];
+const VCED_COMMON_FIELDS = ["alg", "fb", "lfs", "lfd", "pmd", "amd", "sync", "lfw", "pms", "ams", "trps",
+  "mono", "pbr", "portm", "portt", "fcvol", "sus", "porta", "chorus",
+  "mwp", "mwa", "bcp", "bca", "bcpb", "bceb"];
+const ACED_OP_FIELDS = ["fix", "fixrg", "fin", "opw", "shft"];
+const PCED_INST_FIELDS = ["maxnotes", null, null, "ch", "low", "high", "det", "shift", "vol", "out", "lfo", "micro"];
+const OP_FOR_SLOT = [4, 2, 3, 1];
+const pendingVoiceMsb = new Array(8).fill(0);
+
+function applyParamFromUnit(group, pp, vv) {
+  const v = Store.voice, p = Store.perf;
+  if (group === TXD.GROUP_VCED) {
+    if (pp < 52) {
+      v.ops[OP_FOR_SLOT[Math.floor(pp / 13)] - 1][VCED_OP_FIELDS[pp % 13]] = vv;
+    } else if (pp < 77) {
+      v[VCED_COMMON_FIELDS[pp - 52]] = vv;
+    } else if (pp < 87) {
+      const n = TXC.padName(v.name).split("");
+      n[pp - 77] = String.fromCharCode(vv);
+      v.name = TXC.cleanName(n.join("")).replace(/\s+$/, "");
+    } else if (pp < 93) {
+      v.peg[pp - 87] = vv;
+    } else return false;
+    return true;
+  }
+  if (group === TXD.GROUP_ACED) {
+    if (pp < 20) v.ops[OP_FOR_SLOT[Math.floor(pp / 5)] - 1][ACED_OP_FIELDS[pp % 5]] = vv;
+    else if (pp === 20) v.rev = vv;
+    else if (pp === 21) v.fcp = vv;
+    else if (pp === 22) v.fca = vv;
+    else return false;   // 68 = remote switch etc.
+    return true;
+  }
+  if (group === TXD.GROUP_PCED) {
+    if (pp < 96) {
+      const inst = Math.floor(pp / 12), off = pp % 12, s = p.insts[inst];
+      if (off === 1) { pendingVoiceMsb[inst] = vv & 1; return false; }
+      if (off === 2) { s.voice = ((pendingVoiceMsb[inst] << 7) | (vv & 127)) % 160; return true; }
+      s[PCED_INST_FIELDS[off]] = vv;
+    } else if (pp === 96) p.microtable = vv;
+    else if (pp === 97) p.assign = vv;
+    else if (pp === 98) p.effect = vv;
+    else if (pp === 99) p.microkey = vv;
+    else if (pp < 110) {
+      const n = TXC.padName(p.name).split("");
+      n[pp - 100] = String.fromCharCode(vv);
+      p.name = TXC.cleanName(n.join("")).replace(/\s+$/, "");
+    } else return false;
+    return true;
+  }
+  return false;
+}
+
+/* ------------------------------ send/save --------------------------------- */
+function sendVoice() {
+  if (!requireOut()) return;
+  const [aced, vced] = TXC.voiceDumps(Midi.channel, Store.voice);
+  Midi.enqueue(aced, { gap: 80 });
+  Midi.enqueue(vced, { gap: 150 });
+  status("Sent voice to edit buffer");
+}
+function sendPerf() {
+  if (!requireOut()) return;
+  Midi.enqueue(TXC.perfDump(Midi.channel, Store.perf), { gap: 150 });
+  status("Sent performance to edit buffer");
+}
+
+function saveBlob(bytes, filename) {
+  const blob = new Blob([bytes], { type: "application/octet-stream" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+$("vGet").addEventListener("click", () => { if (!requireOut()) return; Midi.enqueue(TXC.requestVoice(Midi.channel), { gap: 40 }); status("Requested voice edit buffer…"); });
+$("vSend").addEventListener("click", sendVoice);
+$("vInit").addEventListener("click", () => {
+  if (!confirm("Reset the editor to INIT VOICE?")) return;
+  Store.voice = TXD.initVoice(); Store.loc = null;
+  repaintAll(); paintVoiceList();
+  status("Init voice loaded (not sent — press Send)");
+});
+$("vScanI").addEventListener("click", () => { if (!requireOut()) return; Midi.enqueue(TXC.requestUserBank(Midi.channel), { gap: 40 }); status("Requested user bank I…"); });
+$("vSave").addEventListener("click", () => {
+  const [aced, vced] = TXC.voiceDumps(0, Store.voice);
+  const out = new Uint8Array(aced.length + vced.length);
+  out.set(aced, 0); out.set(vced, aced.length);
+  saveBlob(out, (TXC.cleanName(Store.voice.name).trim().replace(/\W+/g, "_") || "voice") + ".syx");
+});
+
+$("pGet").addEventListener("click", () => { if (!requireOut()) return; Midi.enqueue(TXC.requestPerf(Midi.channel), { gap: 40 }); status("Requested performance edit buffer…"); });
+$("pSend").addEventListener("click", sendPerf);
+$("pInit").addEventListener("click", () => {
+  if (!confirm("Reset the editor to INIT PERF?")) return;
+  Store.perf = TXD.initPerformance(); Store.loc = null;
+  repaintAll(); paintPerfList();
+  status("Init performance loaded (not sent — press Send)");
+});
+$("pScan").addEventListener("click", () => { if (!requireOut()) return; Midi.enqueue(TXC.requestPerfBank(Midi.channel), { gap: 40 }); status("Requested PF bank…"); });
+$("pSave").addEventListener("click", () => {
+  saveBlob(TXC.perfDump(0, Store.perf),
+    (TXC.cleanName(Store.perf.name).trim().replace(/\W+/g, "_") || "performance") + ".syx");
+});
+
+/* ------------------------------ file open --------------------------------- */
+let fileTarget = "voice";
+$("vOpen").addEventListener("click", () => { fileTarget = "voice"; $("filePick").click(); });
+$("pOpen").addEventListener("click", () => { fileTarget = "perf"; $("filePick").click(); });
+
+$("filePick").addEventListener("change", async () => {
+  const f = $("filePick").files[0];
+  $("filePick").value = "";
+  if (!f) return;
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  const msgs = TXC.splitSysex(bytes).map(TXC.classify).filter(Boolean);
+  if (!msgs.length) { status("No recognizable TX81Z sysex in " + f.name, true); return; }
+
+  const vmem = msgs.find((m) => m.type === "vmem");
+  const pmem = msgs.find((m) => m.type === "pmem");
+  if (vmem) { openBankDialog(f.name, TXC.decodeVmem(vmem.msg), "voice"); return; }
+  if (pmem) { openBankDialog(f.name, TXC.decodePmem(pmem.msg), "perf"); return; }
+
+  let loaded = null;
+  for (const m of msgs) {
+    if (m.type === "aced") { Store.voice = TXC.decodeAced(m.data, Store.voice); loaded = "voice"; }
+    if (m.type === "vced") { Store.voice = TXC.decodeVced(m.data, Store.voice); loaded = "voice"; }
+    if (m.type === "pced") { Store.perf = TXC.decodePced(m.data); loaded = "perf"; }
+  }
+  if (!loaded) { status("Nothing loadable in " + f.name, true); return; }
+  Store.loc = null;
+  repaintAll();
+  status("Loaded " + (loaded === "voice" ? Store.voice.name : Store.perf.name) + " from " + f.name +
+    " (press Send to hear it)");
+});
+
+function openBankDialog(title, items, kind) {
+  const dlg = $("bankDialog");
+  $("bankDialogTitle").textContent = title + " — " + items.length + (kind === "voice" ? " voices" : " performances");
+  const list = $("bankDialogList");
+  list.innerHTML = "";
+  items.forEach((item, i) => {
+    const b = document.createElement("button");
+    b.textContent = String(i + 1).padStart(2, "0") + "  " + item.name;
+    b.addEventListener("click", () => {
+      if (kind === "voice") {
+        Store.voice = JSON.parse(JSON.stringify(item));
+        Store.voice.ops.forEach((o) => { if (o.rr === 0) o.rr = 1; });
+        showTab("voice");
+        if ($("bankDialogSend").checked) sendVoice();
+      } else {
+        Store.perf = JSON.parse(JSON.stringify(item));
+        showTab("perf");
+        if ($("bankDialogSend").checked) sendPerf();
+      }
+      Store.loc = null;
+      repaintAll();
+      status("Loaded " + item.name + " from bank file");
+    });
+    list.appendChild(b);
+  });
+  dlg.showModal();
+}
+$("bankDialogClose").addEventListener("click", () => $("bankDialog").close());
+
+/* ------------------------------ tabs -------------------------------------- */
+function showTab(which) {
+  const voice = which === "voice";
+  $("tabVoice").classList.toggle("on", voice);
+  $("tabPerf").classList.toggle("on", !voice);
+  $("pageVoice").classList.toggle("on", voice);
+  $("pagePerf").classList.toggle("on", !voice);
+  updateLcd();
+}
+$("tabVoice").addEventListener("click", () => showTab("voice"));
+$("tabPerf").addEventListener("click", () => showTab("perf"));
+
+/* ------------------------------ keyboard ---------------------------------- */
+let octave = 3;   // bottom note C3 (MIDI 48 in Yamaha terms = C1... display only)
+function buildKeyboard() {
+  const kbd = $("kbd");
+  kbd.innerHTML = "";
+  const base = 24 + octave * 12;
+  const isBlack = [1, 3, 6, 8, 10];
+  for (let n = base; n < base + 25 && n < 128; n++) {
+    const k = document.createElement("div");
+    k.className = isBlack.includes(n % 12) ? "black" : "white";
+    k.dataset.note = n;
+    if (n % 12 === 0) k.title = TXD.noteName(n);
+    kbd.appendChild(k);
+  }
+}
+function noteFromEvent(e) {
+  const t = e.target.closest("[data-note]");
+  return t ? t.dataset.note | 0 : null;
+}
+let heldNote = null;
+function noteOn(n) {
+  noteOff();
+  heldNote = n;
+  Midi.sendNow(new Uint8Array([0x90 | Midi.channel, n, $("vel").value | 0]));
+  document.querySelector(`[data-note="${n}"]`)?.classList.add("down");
+}
+function noteOff() {
+  if (heldNote === null) return;
+  Midi.sendNow(new Uint8Array([0x80 | Midi.channel, heldNote, 0]));
+  document.querySelector(`[data-note="${heldNote}"]`)?.classList.remove("down");
+  heldNote = null;
+}
+$("kbd").addEventListener("pointerdown", (e) => { const n = noteFromEvent(e); if (n !== null) { noteOn(n); e.preventDefault(); } });
+addEventListener("pointerup", noteOff);
+$("kbd").addEventListener("pointerleave", noteOff);
+$("octDown").addEventListener("click", () => { octave = Math.max(0, octave - 1); buildKeyboard(); });
+$("octUp").addEventListener("click", () => { octave = Math.min(7, octave + 1); buildKeyboard(); });
+$("vel").addEventListener("input", () => $("velVal").textContent = $("vel").value);
+
+/* ------------------------------ boot -------------------------------------- */
+buildVoicePage();
+buildPerfPage();
+buildBankTabs();
+paintVoiceList();
+paintPerfList();
+buildKeyboard();
+repaintAll();
+Midi.init();
+status("Ready — pick MIDI ports, then click a patch to recall it");
+</script>
+</body>
+</html>
