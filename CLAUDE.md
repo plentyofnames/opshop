@@ -27,6 +27,8 @@ Key facts that trip people up:
   scans, cached in localStorage under `tx81z:names:*`.
 - ACED fine is only 0–7 when coarse < 4 (encode clamps; UI shows the computed
   ratio/Hz readout via `TXD.fineRatio` / `TXD.fixedFrequency`).
+- Portamento mode (VCED 65) is inverted: **0 = full-time, 1 = fingered**.
+  Verified on hardware 2026-09; Edisyn models it as a flipped checkbox.
 
 Testing: `test.html` runs round-trip assertions over `tx81z-core.js` — open it
 via the dev server (`.claude/launch.json`, port 8917) after touching the core.

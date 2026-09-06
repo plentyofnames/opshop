@@ -846,7 +846,8 @@ function buildVoicePage() {
   sliderCell(fc, { key: "pbr", label: "P.Bend", min: 0, max: 12, get: () => V().pbr, set: (v) => V().pbr = v, emit: emitVced(64) });
   toggleCell(fc, { key: "mono", label: "Mode", onText: "Mono", offText: "Poly", get: () => V().mono, set: (v) => V().mono = v, emit: emitVced(63) });
   divider(fc);
-  toggleCell(fc, { key: "portm", label: "Port Mode", onText: "Full", offText: "Fingr", get: () => V().portm, set: (v) => V().portm = v, emit: emitVced(65) });
+  // VCED 65 is inverted: 0 = full-time, 1 = fingered (hardware-verified; Edisyn flips it too)
+  toggleCell(fc, { key: "portm", label: "Port Mode", onText: "Fingr", offText: "Full", get: () => V().portm, set: (v) => V().portm = v, emit: emitVced(65) });
   sliderCell(fc, { key: "portt", label: "Port Time", min: 0, max: 99, get: () => V().portt, set: (v) => V().portt = v, emit: emitVced(66) });
   divider(fc);
   sliderCell(fc, { key: "rev", label: "Reverb", min: 0, max: 7, get: () => V().rev, set: (v) => V().rev = v, emit: emitAced(20), fmt: (v) => TXD.REVERB_RATES[v] });
