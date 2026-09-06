@@ -208,6 +208,8 @@
   .egsvg { width: 88px; height: 30px; flex: none; }
   .egsvg polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; }
   .egsvg .fill { fill: var(--accent-soft); stroke: none; }
+  .egsvg .hl { stroke: var(--carrier); stroke-width: 2.5; opacity: 0; transition: opacity .25s; }
+  .egsvg .hl.show { opacity: 1; }
   .freqread { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10.5px; color: var(--carrier); white-space: nowrap; }
   .wavesvg { width: 100%; height: 20px; display: block; }
   .wavesvg path { fill: none; stroke: var(--ink); stroke-width: 1.6; }
@@ -562,13 +564,10 @@ function sliderCell(parent, spec) {
     v = clamp(v | 0, spec.min, spec.max);
     if (v === spec.get()) { paint(); return; }
     spec.set(v); paint(); refreshDerived();
+    if (spec.onEdit) spec.onEdit();
     if (spec.emit) spec.emit(v);
   };
   input.addEventListener("input", () => commit(input.value | 0));
-  cell.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    commit(spec.get() + (e.deltaY < 0 ? 1 : -1));
-  }, { passive: false });
   paint();
   regSet(spec.key, { update: paint });
   return cell;
@@ -670,32 +669,76 @@ function makeWaveSvg(container) {
   return (w) => path.setAttribute("d", wavePath(w, 60, 20));
 }
 
-// envelope thumbnail from AR/D1R/D1L/D2R/RR
-function egPoints(o, W, H) {
-  const inv = (r, max) => (max - r) / max;                    // slow rate = long time
-  const tA = 0.06 + 0.30 * inv(o.ar, 31);
-  const tD1 = 0.08 + 0.34 * inv(o.d1r, 31);
-  const tD2 = 0.22;
-  const tR = 0.06 + 0.26 * inv(o.rr, 15);
+/* Envelope thumbnail from AR/D1R/D1L/D2R/RR, per the TX81Z EG:
+ *   attack to peak, decay 1 to D1L, decay 2 toward zero while held
+ *   (rate 0 = no decay: D1R=0 holds at peak, D2R=0 sustains at D1L),
+ *   release to zero from wherever the level is at key-up.
+ * D1/D2 are drawn in fixed "held" windows; a rate's time-to-target scales
+ * ~1/rate², so slow rates leave the level partway at the window's end. */
+function egModel(o) {
+  const pts = [];      // [x, level] in model units; x normalized when drawn
+  const segs = {};     // segment name -> [first, last] index into pts
+  const inv = (r, m) => (m - r) / m;
+  const W1 = 0.30, W2 = 0.26;
+  let x = 0;
+  pts.push([0, 0]);
+  x += 0.04 + 0.34 * Math.pow(inv(o.ar, 31), 1.4);
+  pts.push([x, 1]);
+  segs.attack = [0, 1];
   const l1 = o.d1l / 15;
-  const l2 = o.d2r === 0 ? l1 : l1 * 0.35;
-  const xs = [0, tA, tA + tD1, tA + tD1 + tD2, Math.min(1, tA + tD1 + tD2 + tR)];
-  const ys = [0, 1, l1, l2, 0];
-  const total = xs[4];
-  return xs.map((x, i) => ((x / total) * (W - 2) + 1).toFixed(1) + "," + ((1 - ys[i]) * (H - 4) + 2).toFixed(1)).join(" ");
+  if (o.d1r === 0) {
+    // decay 1 rate 0: the EG never leaves the peak while the key is held
+    x += W1 + W2; pts.push([x, 1]);
+    segs.d1 = segs.d2 = [1, 2];
+  } else {
+    const T1 = 0.10 * W1 * Math.pow(31 / o.d1r, 2);   // time to reach D1L
+    if (T1 <= W1) { x += T1; pts.push([x, l1]); x += W1 - T1; pts.push([x, l1]); }
+    else { x += W1; pts.push([x, 1 - (1 - l1) * (W1 / T1)]); }
+    segs.d1 = [1, pts.length - 1];
+    const d2start = pts.length - 1;
+    const lv = pts[pts.length - 1][1];
+    if (o.d2r === 0 || lv === 0) { x += W2; pts.push([x, lv]); }
+    else {
+      const T2 = 0.10 * W2 * Math.pow(31 / o.d2r, 2) * lv;  // time to reach zero
+      if (T2 <= W2) { x += T2; pts.push([x, 0]); x += W2 - T2; pts.push([x, 0]); }
+      else { x += W2; pts.push([x, lv * (1 - W2 / T2)]); }
+    }
+    segs.d2 = [d2start, pts.length - 1];
+  }
+  const held = pts[pts.length - 1][1];
+  const relStart = pts.length - 1;
+  x += Math.max(0.02, (0.03 + 0.20 * Math.pow(inv(o.rr, 15), 1.2)) * Math.max(held, 0.15));
+  pts.push([x, 0]);
+  segs.rel = [relStart, pts.length - 1];
+  return { pts, segs, total: x };
 }
 
 function makeEgSvg(container, op) {
   const svg = svgEl("svg", { class: "egsvg", viewBox: "0 0 96 40", preserveAspectRatio: "none" });
   const fill = svgEl("polygon", { class: "fill", points: "" });
   const line = svgEl("polyline", { points: "" });
-  svg.append(fill, line);
+  const hl = svgEl("polyline", { class: "hl", points: "" });
+  svg.append(fill, line, hl);
   container.appendChild(svg);
-  return () => {
-    const pts = egPoints(Store.voice.ops[op], 96, 40);
-    line.setAttribute("points", pts);
-    fill.setAttribute("points", "1,38 " + pts + " 95,38");
+  let model = null, hlTimer = null;
+  const toStr = (pts, total) =>
+    pts.map(([px, py]) => ((px / total) * 94 + 1).toFixed(1) + "," + ((1 - py) * 36 + 2).toFixed(1)).join(" ");
+  const paint = () => {
+    model = egModel(Store.voice.ops[op]);
+    const s = toStr(model.pts, model.total);
+    line.setAttribute("points", s);
+    fill.setAttribute("points", "1,38 " + s + " 95,38");
   };
+  // briefly overlay the segment being edited
+  const flash = (seg) => {
+    if (!model || !model.segs[seg]) return;
+    const [a, b] = model.segs[seg];
+    hl.setAttribute("points", toStr(model.pts.slice(a, b + 1), model.total));
+    hl.classList.add("show");
+    clearTimeout(hlTimer);
+    hlTimer = setTimeout(() => hl.classList.remove("show"), 900);
+  };
+  return { paint, flash };
 }
 
 // algorithm diagram
@@ -856,24 +899,25 @@ function buildOpStrip(op) {
   const nm = document.createElement("div"); nm.className = "name"; nm.textContent = "OP " + (op + 1);
   const role = document.createElement("div"); role.className = "role";
   badge.append(nm, role);
-  const egPaint = makeEgSvg(badge, op);
+  const eg = makeEgSvg(badge, op);
   strip.appendChild(badge);
 
   const cells = document.createElement("div"); cells.className = "cells"; cells.style.flex = "1";
   strip.appendChild(cells);
 
-  const S = (key, label, min, max, off, group, fmt) => sliderCell(cells, {
+  const S = (key, label, min, max, off, group, fmt, egSeg) => sliderCell(cells, {
     key: "op" + op + "." + key, label, min, max, fmt,
     get: () => o()[key], set: (v) => o()[key] = v,
+    onEdit: egSeg ? () => eg.flash(egSeg) : undefined,
     emit: group === "a" ? emitAced(appOp(op, off)) : emitVced(vppOp(op, off)),
   });
 
   // EG
-  S("ar", "Attack", 0, 31, 0);
-  S("d1r", "Decay 1", 0, 31, 1);
-  S("d1l", "D1 Level", 0, 15, 4);
-  S("d2r", "Decay 2", 0, 31, 2);
-  S("rr", "Release", 1, 15, 3);
+  S("ar", "Attack", 0, 31, 0, undefined, undefined, "attack");
+  S("d1r", "Decay 1", 0, 31, 1, undefined, undefined, "d1");
+  S("d1l", "D1 Level", 0, 15, 4, undefined, undefined, "d1");
+  S("d2r", "Decay 2", 0, 31, 2, undefined, undefined, "d2");
+  S("rr", "Release", 1, 15, 3, undefined, undefined, "rel");
   selectCell(cells, { key: "op" + op + ".shft", label: "EG Shift", options: TXD.EG_SHIFTS,
     get: () => o().shft, set: (v) => o().shft = v, emit: emitAced(appOp(op, 4)) });
   divider(cells);
@@ -917,7 +961,7 @@ function buildOpStrip(op) {
   regSet("op" + op + ".opw", { update: paintWave });
 
   opRefs[op] = {
-    strip, roleEl: role, egPaint,
+    strip, roleEl: role, egPaint: eg.paint,
     freqPaint: () => {
       const x = o();
       if (x.fix) fread.textContent = TXD.fixedFrequency(x.fixrg, x.crs, x.fin) + " Hz";
