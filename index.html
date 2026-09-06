@@ -371,8 +371,9 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 /* ------------------------------ theme ----------------------------------- */
 (function initTheme() {
-  const saved = localStorage.getItem("tx81z:theme");
-  if (saved) document.documentElement.dataset.theme = saved;
+  const saved = new URLSearchParams(location.search).get("theme") ||
+    localStorage.getItem("tx81z:theme");
+  if (saved === "dark" || saved === "light") document.documentElement.dataset.theme = saved;
   $("themeBtn").addEventListener("click", () => {
     const cur = document.documentElement.dataset.theme ||
       (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
