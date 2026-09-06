@@ -1,6 +1,11 @@
-# TX81Z Editor
+# OP SHOP (TX81Z Editor)
 
-Web editor/librarian for the Yamaha TX81Z. Vanilla JS + Web MIDI, no build
+Web editor/librarian for the Yamaha TX81Z, published as **OP SHOP** at
+plentyofnames.github.io/opshop (repo `plentyofnames/opshop`; a tile on the
+plentyofnam.es Software tab embeds it — that site lives in
+`../plentyofnam.es`, deployed from its `publish` branch).
+
+Vanilla JS + Web MIDI, no build
 step, no frameworks — sibling to `../PCM 70 Editor` (same stack; follow its
 conventions: one paced send queue with per-key coalescing, pure byte-level
 functions kept DOM-free and testable, CSS custom properties for light+dark).

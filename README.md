@@ -1,8 +1,11 @@
-# TX81Z Editor
+# OP SHOP — Yamaha TX81Z Editor
 
 Web-based editor for the Yamaha TX81Z FM tone generator. Vanilla JS + Web MIDI,
 no build step — sibling project to `../PCM 70 Editor` and `../EF-303 Editor`
 (same stack and conventions).
+
+Live at https://plentyofnames.github.io/opshop/ (also on the Software tab of
+https://plentyofnam.es).
 
 ## Run it
 
